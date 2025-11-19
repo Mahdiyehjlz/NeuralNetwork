@@ -1,0 +1,121 @@
+clc; 
+clear; 
+close all;
+
+nIter = 150;        
+alpha = 0.01;       
+nInputs = 1;        
+nOutputs = 1;
+f1 = 'logsig';        
+f2 = 'purelin'; 
+e = zeros(1, nIter);
+nLayers = 2; 
+
+% Layer initialization
+for i = 1:nLayers
+    if (i ~= nLayers)
+        layer(i).nPerc = input(['nPerc. in the [' num2str(i) 'th] layer is: ']);
+    else
+        layer(i).nPerc = nOutputs;
+    end
+    
+    if i == 1
+        layer(i).bias = randn(layer(i).nPerc, 1);
+        layer(i).weight = randn(layer(i).nPerc, nInputs);
+    elseif i == nLayers
+        layer(i).bias = randn(nOutputs, 1);
+        layer(i).weight = randn(nOutputs, layer(i-1).nPerc);
+    end  
+end
+
+layer(1).func = f1;
+layer(nLayers).func = f2;
+
+% Training - initialize all arrays properly
+u = randn(1, 202);  % Make u larger to accommodate u(k-2)
+yp = zeros(1, 202); % Initialize yp with proper size
+
+% Set initial conditions
+yp(1) = 0;
+yp(2) = 0;
+u(1) = 0.1;
+u(2) = 0.1;
+
+for i = 1:nIter
+    total_error = 0;  % Reset error for each iteration
+    
+    for k = 3:200  % Start from k=3 to ensure u(k-2) exists
+        % Calculate denominator separately to check for issues
+        denominator = 1 + (0.6*yp(k) + 0.4*yp(k-1)) * yp(k-1);
+        
+        % Avoid division by zero or negative denominators
+        if abs(denominator) < 1e-6
+            denominator = 1e-6 * sign(denominator);
+        end
+        
+        % Plant dynamics - CORRECTED VERSION
+        yp(k+1) = ((-0.8*yp(k) - 0.14*yp(k-1)) / denominator) + u(k-1) - 0.5*u(k-2);
+        
+        % Create input for neural network
+        nn_input = ((-0.8*yp(k) - 0.14*yp(k-1)) / denominator) + u(k-1) - 0.5*u(k-2);
+        
+        % Forward propagation through neural network
+        for j = 1:nLayers
+            if (j == 1)
+                layer(j).out = feval(layer(j).func, layer(j).weight * nn_input + layer(j).bias);
+            elseif (j == nLayers)
+                layer(j).out = feval(layer(j).func, layer(j).weight * layer(j-1).out + layer(j).bias);
+            end
+        end
+        
+        % Calculate error
+        current_error = yp(k) - layer(nLayers).out;
+        total_error = total_error + current_error^2;
+        
+        % Calculate network input for backpropagation
+        n = layer(1).weight * nn_input + layer(1).bias;
+        
+        % Backpropagation
+        layer(nLayers).dfunc = 1;  % Derivative of purelin is 1
+        layer(nLayers).sensitivity = layer(nLayers).dfunc * current_error;
+        
+        % Calculate derivative of activation function for hidden layer
+        layer(1).dfunc = dlogsig(n, layer(1).out);
+        layer(1).sensitivity = diag(layer(1).dfunc) * layer(2).weight' * layer(2).sensitivity;
+        
+        % Update weights and biases
+        for z = 1:nLayers
+            layer(z).bias = layer(z).bias + alpha .* layer(z).sensitivity;
+            if (z ~= 1)
+                layer(z).weight = layer(z).weight + alpha .* layer(z).sensitivity * layer(z-1).out';
+            else
+                layer(z).weight = layer(z).weight + alpha .* layer(z).sensitivity * nn_input';
+            end
+        end
+    end
+    
+    % Store total error for this iteration
+    e(i) = total_error;
+    
+    % Display progress
+    if mod(i, 10) == 0
+        fprintf('Iteration %d, Error: %f\n', i, e(i));
+    end
+end
+
+% Plot results
+figure;
+plot(1:nIter, e(1:nIter)); 
+grid on;
+xlabel('Iteration'); 
+ylabel('Mean Squared Error');
+title('Training Error vs Iteration');
+
+% Derivative functions
+function d = dlogsig(n, a)
+    d = a .* (1 - a);
+end
+
+function d = dpurelin(n, a)
+    d = ones(size(a));
+end
