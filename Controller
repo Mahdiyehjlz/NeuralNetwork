@@ -1,0 +1,131 @@
+clc; 
+clear; 
+close all;       
+
+alpha = 0.01;       
+nInputs = 1;        
+nOutputs = 1;
+f1 = 'logsig';        
+f2 = 'purelin'; 
+nLayers = 2; 
+
+% Initialize arrays
+yd = ones(1, 200);
+yp = zeros(1, 201);  % Initialize yp with proper size
+ym = zeros(1, 200);  % Initialize ym with proper size
+e_c = zeros(1, 199); % Initialize e_c with proper size
+u = zeros(1, 201);   % Initialize u with proper size
+
+% Layer initialization
+for i = 1:nLayers
+    if (i ~= nLayers)
+        layer(i).nPerc = input(['nPerc. in the [' num2str(i) 'th] layer is: ']);
+    else
+        layer(i).nPerc = nOutputs;
+    end
+    
+    if i == 1
+        layer(i).bias = randn(layer(i).nPerc, 1);
+        layer(i).weight = randn(layer(i).nPerc, nInputs);
+        layer(i).weight2 = randn(layer(i).nPerc, nInputs);
+    elseif i == nLayers
+        layer(i).bias = randn(nOutputs, 1);
+        layer(i).weight = randn(nOutputs, layer(i-1).nPerc);
+        layer(i).weight2 = randn(nOutputs, layer(i-1).nPerc);
+    end  
+end
+
+layer(1).func = f1;
+layer(nLayers).func = f2;
+
+% Initial conditions
+yp(1) = 0;
+yp(2) = 0;
+u(1) = 0;
+u(2) = 0;
+
+for k = 2:200
+    % Forward propagation for controller
+    for j = 1:nLayers
+        if (j == 1)
+            layer(j).out = feval(layer(j).func, layer(j).weight * yd(k-1) + layer(j).bias);
+        elseif (j == nLayers)
+            layer(j).out = feval(layer(j).func, layer(j).weight * layer(j-1).out + layer(j).bias);
+        end  
+    end
+    
+    % CORRECTED: Assign controller output to u(k)
+    u(k+1) = layer(2).out;  % This is the corrected line
+    
+    % Plant dynamics
+    yp(k+1) = ((-0.8*yp(k) - 0.14*yp(k-1)) / (1 + (0.6*yp(k) + 0.4*yp(k-1)) * yp(k-1))) + u(k) - 0.5*u(k-1);
+    
+    % Forward propagation for model
+    for j = 1:nLayers
+        if (j == 1)
+            % Calculate plant input for model
+            plant_input = ((-0.8*yp(k) - 0.14*yp(k-1)) / (1 + (0.6*yp(k) + 0.4*yp(k-1)) * yp(k-1))) + u(k) - 0.5*u(k-1);
+            layer(j).out2 = feval(layer(j).func, layer(j).weight2 * plant_input + layer(j).bias);
+        elseif (j == nLayers)
+            layer(j).out2 = feval(layer(j).func, layer(j).weight2 * layer(j-1).out2 + layer(j).bias);
+        end  
+    end
+    
+    ym(k) = layer(2).out2;
+    e_m = yp(k) - ym(k);
+    e_c(k) = yd(k) - yp(k);
+    
+    n1 = layer(1).weight * yd(k-1) + layer(1).bias;
+    plant_input = ((-0.8*yp(k) - 0.14*yp(k-1)) / (1 + (0.6*yp(k) + 0.4*yp(k-1)) * yp(k-1))) + u(k) - 0.5*u(k-1);
+    n2 = layer(1).weight2 * plant_input + layer(1).bias;
+    
+    % Backpropagation for model
+    layer(nLayers).dfunc = 1;
+    layer(nLayers).sensitivity = diag(layer(nLayers).dfunc) * e_m;
+    layer(1).dfunc = feval(strcat('d', layer(1).func), n2, layer(1).out2);
+    layer(1).sensitivity = diag(layer(1).dfunc) * layer(2).weight2' * layer(2).sensitivity;
+    
+    for z = 1:nLayers
+        layer(z).bias = layer(z).bias + alpha .* layer(z).sensitivity;
+        if (z ~= 1)
+            layer(z).weight2 = layer(z).weight2 + alpha .* layer(z).sensitivity * layer(z-1).out2';
+        else
+            layer(z).weight2 = layer(z).weight2 + alpha .* layer(z).sensitivity * plant_input';
+        end
+    end
+    
+    % Jacobian calculation
+    J = diag(layer(1).dfunc) * layer(2).weight2' * layer(1).weight2';
+    Jp = diag(J);
+
+    % Backpropagation for controller
+    layer(nLayers).dfunc = 1;
+    layer(nLayers).sensitivity = diag(layer(nLayers).dfunc) * e_c(k);
+    layer(1).dfunc = feval(strcat('d', layer(1).func), n1, layer(1).out);
+    layer(1).sensitivity = diag(layer(1).dfunc) * layer(2).weight' * layer(2).sensitivity;
+    
+    for z = 1:nLayers
+        layer(z).bias = layer(z).bias + alpha .* layer(z).sensitivity;
+        if (z ~= 1)
+            layer(z).weight = layer(z).weight + alpha .* layer(z).sensitivity .* Jp' .* layer(z-1).out';
+        else
+            layer(z).weight = layer(z).weight + alpha .* layer(z).sensitivity .* Jp .* yd(k-1)';
+        end
+    end
+end
+
+% Plot results
+figure;
+subplot(2,1,1);
+plot(yd, 'b-', 'LineWidth', 2); hold on;
+plot(yp, 'r--', 'LineWidth', 2);
+legend('Desired', 'Plant Output');
+title('System Response');
+xlabel('Time Step');
+ylabel('Amplitude');
+
+subplot(2,1,2);
+plot(e_c, 'g-', 'LineWidth', 2);
+title('Control Error');
+xlabel('Time Step');
+ylabel('Error');
