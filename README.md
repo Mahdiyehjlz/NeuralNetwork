@@ -1,197 +1,176 @@
 # Neural Network Control System: Identifier and Controller
 
 ## Overview
-This project implements a neural network–based control system made of two components:
+This project implements a neural network-based control system with two main components:
+1. **Identifier Network** - Learns to model the plant's nonlinear dynamics
+2. **Controller Network** - Generates control signals so the plant output tracks a desired reference
 
-1. **Identifier Network** – Learns to model the plant’s nonlinear dynamics  
-2. **Controller Network** – Generates control signals so the plant output tracks a desired reference  
-
-Both networks are trained **online** using backpropagation.  
-The control architecture is based on **Model Reference Adaptive Control (MRAC)**.
+Both networks are trained **online** using backpropagation in a **Model Reference Adaptive Control (MRAC)** architecture.
 
 ---
 
-# System Architecture
-- The **Identifier** learns the mapping between inputs and plant outputs.  
-- The **Controller** uses this internal model to compute appropriate control actions.  
-- Both networks are:
-  - 2-layer feedforward networks  
-  - Hidden layer activation: **logsig**  
-  - Output layer activation: **purelin**  
-  - Updated online using gradient descent  
+## System Architecture
+
+The system employs a dual-network approach:
+- **Identifier**: Learns the mapping between control inputs and plant outputs
+- **Controller**: Uses the internal model to compute optimal control actions
+
+**Network Specifications:**
+- 2-layer feedforward architecture
+- Hidden layer: logsig activation
+- Output layer: purelin activation  
+- Online gradient descent training
 
 ---
 
-# 1. Identifier Network
+## 1. Identifier Network
 
-## Purpose
-The Identifier neural network approximates the nonlinear plant by learning its forward dynamics.
+### Purpose
+Approximates the nonlinear plant dynamics by learning the forward model from input-output data.
 
-## Neural Network Structure
-- 2-layer feedforward network  
-- Hidden layer: **logsig**  
-- Output layer: **purelin**  
-- User selects number of hidden neurons  
+### Neural Network Structure
+- 2-layer feedforward network
+- Hidden layer: logsig activation function
+- Output layer: purelin activation function
+- User-configurable hidden layer size
 
-## Plant Dynamics Modeled
-```matlab
-yp(k+1) = ((-0.8*yp(k) - 0.14*yp(k-1)) / denominator) ...
-          + u(k-1) - 0.5*u(k-2);
+### Plant Dynamics
+The system models nonlinear plant behavior with delayed inputs and outputs, incorporating both linear and nonlinear components in its dynamics.
 
-denominator = 1 + (0.6*yp(k) + 0.4*yp(k-1)) * yp(k-1);
-```
+### Training Process
+1. **Forward propagation** to compute predicted output
+2. **Error calculation** between actual and predicted output
+3. **Backpropagation** to compute weight sensitivities
+4. **Weight updates** using gradient descent
+5. **Iterative refinement** over 150 training cycles
+
+### Key Features
+- Robust denominator checking for numerical stability
+- Proper array sizing for handling system delays
+- Progress monitoring with error display every 10 iterations
+- Training convergence visualization
+
+### Usage
+User specifies hidden layer size during execution for flexible architecture configuration.
+
 ---
-#Training Process
 
-Forward propagation to compute predicted output
+## 2. Controller Network
 
-Compute prediction error
+### Purpose
+Generates control signals to make the plant output follow a desired reference trajectory.
 
-Backpropagation to compute sensitivities
+### Dual-Network Architecture
+- **Controller Network**: Produces control inputs
+- **Model Network**: Provides Jacobian estimation for controller adaptation
+- Both networks share identical architecture and online training
 
-Update weights and biases
+### Control Strategy
+- **Reference tracking** with constant desired output
+- **Error metrics**:
+  - Control error: difference between desired and actual output
+  - Modeling error: difference between plant and model output
 
-Repeat for 150 iterations
+### Adaptation Mechanism
+1. Model network updates based on modeling error
+2. Jacobian estimation from model network
+3. Controller updates using control error and Jacobian information
+4. Real-time parameter adjustment
 
-#Features
+### Key Features
+- Simultaneous online adaptation of both networks
+- Jacobian-based sensitivity analysis
+- Comprehensive performance visualization:
+  - System response comparison
+  - Control error tracking
 
-Robust denominator checking
+### Usage
+User-defined hidden layer size allows for customized network capacity.
 
-Correct array sizing for delayed inputs and outputs
+---
 
-Error displayed every 10 iterations
+## Mathematical Foundation
 
-Convergence curve showing training error
+### Backpropagation Algorithm
+Weight and bias updates follow standard gradient descent:
+- Weight update: learning rate × sensitivity × input transpose
+- Bias update: learning rate × sensitivity
 
-#Usage
-nPerc. in the [1th] layer is: 4
+### Activation Functions
+- **Logistic Sigmoid**: Smooth, bounded nonlinearity for hidden layer
+- **Linear**: Unbounded output for final control signals
+- **Derivative functions**: Implemented for backpropagation
 
-##2. Controller Network
-Purpose
+---
 
-Generates control signals u(k) so the plant output yp(k) follows the reference signal yd(k).
+## Implementation Details
 
-Two-Network Structure
+### Parameter Settings
+- Learning rate: 0.01 for stable convergence
+- Network layers: 2 (hidden + output)
+- System type: Single-input single-output (SISO)
+- Training duration: 200 time samples
 
-Controller Network: Generates control input
+### Initialization Strategy
+- Random weight initialization from normal distribution
+- Zero initial conditions for system signals
+- Proper array allocation for time-delay components
 
-Model Network: Approximates plant Jacobian for controller adaptation
+### Safety Measures
+- Denominator protection against division by zero
+- Numerical stability checks
+- Array bounds verification
 
-Both:
+---
 
-Use the same architecture
+## Expected Results
 
-Are trained online
+### Identifier Performance
+- Decreasing mean squared error over training iterations
+- Successful learning of plant dynamics
+- Stable convergence behavior
 
-Control Strategy
+### Controller Performance
+- Plant output tracking reference signal
+- Decreasing control error over time
+- Stable adaptive control performance
 
-Reference signal:
+---
 
-yd(k) = 1;
+## Applications
 
+This system demonstrates practical implementation of:
+- Nonlinear system identification
+- Adaptive control systems
+- Model Reference Adaptive Control (MRAC)
+- Real-time dynamic system control
+- Neural network applications in control engineering
 
-Error Definitions:
+---
 
-Control error:
-e_c(k) = yd(k) - yp(k)
+## Requirements
 
-Modeling error:
-e_m(k) = yp(k) - ym(k)
+### Technical Prerequisites
+- MATLAB environment
+- Understanding of neural networks
+- Knowledge of control theory
+- Familiarity with adaptive systems
 
-Adaptation Method
+### Educational Value
+Provides complete working example of:
+- Neural network-based system identification
+- Online adaptive control implementation
+- MRAC architecture in practice
+- MATLAB programming for control systems
 
-Model network is updated using modeling error
+---
 
-Jacobian estimated from model network
+## Summary
 
-Controller updated using control error and Jacobian information
+This project presents a comprehensive neural network control system that:
+1. **Identifies** complex nonlinear plant dynamics through learning
+2. **Controls** the plant to track desired references using adaptive strategies
+3. **Adapts** online using backpropagation and gradient descent
+4. **Demonstrates** practical MRAC implementation with neural networks
 
-Features
-
-Real-time adaptation
-
-Jacobian estimation
-
-Plots include:
-
-System response (desired vs. actual)
-
-Control error over time
-
-Usage
-nPerc. in the [1th] layer is: 4
-
-Mathematical Foundation
-Backpropagation
-weights = weights + alpha * sensitivity * input';
-bias    = bias    + alpha * sensitivity;
-
-Activation Functions
-
-logsig(x) = 1 / (1 + exp(-x))
-
-purelin(x) = x
-
-Derivatives implemented in code
-
-Implementation Details
-General Settings
-
-Learning rate: 0.01
-
-2-layer network
-
-SISO system
-
-Training length: 200 samples
-
-Initialization
-
-Random weights and biases
-
-Zero initial signals
-
-Arrays sized for delays (u(k–2), yp(k–1))
-
-Safety Controls
-
-Denominator protection
-
-Numerical stability checks
-
-Expected Outputs
-Identifier Results
-
-Training error plot
-
-MSE decreasing over iterations
-
-Controller Results
-
-Plant output (red dashed) vs. desired output (blue)
-
-Control error plot showing convergence
-
-Applications
-
-Nonlinear system identification
-
-Adaptive control
-
-Model Reference Adaptive Control (MRAC)
-
-Real-time dynamic system control
-
-Requirements
-
-MATLAB
-
-Knowledge of:
-
-Neural networks
-
-Control theory
-
-Adaptive systems
-
-This project demonstrates a complete working example of neural network-based system identification and adaptive control using MATLAB.
+The complete MATLAB implementation provides a valuable educational and research tool for understanding neural network applications in adaptive control systems, showcasing real-time learning and control capabilities for nonlinear dynamical systems.
